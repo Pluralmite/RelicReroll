@@ -1,4 +1,4 @@
-Relic Reroll v1.0.0
+Relic Reroll v1.1.0
 Dragon's Dogma 2: Dark Arisen - REFramework script
 
 WHAT IT DOES
@@ -6,27 +6,29 @@ WHAT IT DOES
   buy and craft the materials to pay for it.
 
   REFORGE (Jiera)
-    1. In storage or inventory, view a level 5 relic's card and press R
-       (keyboard) or click the right stick (controller) to MARK it.
-       Equipped gear can't be marked - unequip first.
-    2. Talk to Jiera -> "Reforge Relic: <your relic>".
-    3. Bind up to 2 perks (5 Brinebeast Ore each per roll). Satanchia's
-       Battle Frenzy binds itself for free and uses one of the two slots -
-       it can never be rerolled, upgraded or rolled onto anything.
-    4. Confirm: 10 Wyrmslife Crystals, rising to a 100 cap by the 10th
-       reroll of the same relic. Optional boosts: +10 / +25 / +50 Wyrmslife
-       for 12.5% / 25% / 50% odds the roll carries an enhanced (^) or
-       tier III perk.
-    5. The new roll is shown next to the current perks: take it, keep the
-       old perks, or roll again (binds carry over). Cost is spent either
-       way - riven rules.
+    1. Talk to Jiera -> "Reforge Relic". Her appraisal screen opens as
+       "Relic ReRoll", listing the unequipped level 5 relics in your bag.
+    2. View Details (R3 on controller, V on keyboard) on a relic opens its
+       perks: Confirm binds / unbinds (up to 2, 5 Brinebeast Ore each per
+       roll), Back returns. Satanchia's Battle Frenzy binds itself for free
+       and uses one of the two slots - it can never be rerolled, upgraded
+       or rolled onto anything.
+    3. Confirm on the relic opens the reforge popup: 10 Wyrmslife Crystals,
+       rising to a 100 cap by the 10th reroll of the same relic. Left/right
+       adds a boost: +10 / +25 / +50 Wyrmslife for 12.5% / 25% / 50% odds
+       the roll carries an enhanced (^) or tier III perk.
+    4. The roll plays on the appraisal result screen beside the current
+       perks: take it, keep the old perks, or roll again (binds carry
+       over). Cost is spent either way - riven rules.
 
   TEMPER (Hal)
-    Mark a weapon, talk to Hal -> "Temper Weapon". Rerolls the weapon's
-    element for Morbid Glare: 1 = the game's own odds, 2 = even odds of an
-    element, 3 = an element guaranteed. Level 5 weapons can roll Light.
-    An item holds exactly ONE appraisal bonus: taking an element replaces
-    a stat/enhanced bonus (the screen warns you first).
+    Talk to Hal -> "Temper Weapon". The same screen opens as "Weapon
+    Temper", listing your carried, unequipped weapons with their element.
+    Confirm one and pick a Morbid Glare tier: 1 = the game's own odds,
+    2 = even odds of an element, 3 = an element guaranteed. Level 5
+    weapons can roll Light. Take the new element, keep the current one,
+    or temper again. An item holds exactly ONE appraisal bonus: taking an
+    element replaces a stat/enhanced bonus (the screen warns you first).
 
   SHOP & CRAFTING
     Hal sells Wyrmslife Crystals (1,000 g) and Brinebeast Ore (1,500 g)

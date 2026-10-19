@@ -3,25 +3,27 @@
 Relic Reroll turns Dragon's Dogma 2: Dark Arisen's level 5 relics into an endgame crafting loop, Warframe-riven style: reroll a relic's perks at Jiera with the perks you love locked in, reroll a weapon's element at Hal, and buy or craft every material it costs. Everything happens inside the game's own menus and uses the game's own appraisal rolls - no overlay windows, no fake items, no edited files.
 
 [size=4][b]Reforging (Jiera)[/b][/size]
+Everything happens on Jiera's own appraisal screen, renamed [b]Relic ReRoll[/b] - no talk-menu lists, no overlays.
 [list=1]
-[*][b]Mark a relic[/b]: in storage or your inventory, view a level 5 relic's card and press [b]R[/b] (keyboard) or [b]click the right stick[/b] (controller). An on-screen line confirms it. Equipped gear must be unequipped first.
-[*]Talk to Jiera and pick [b]"Reforge Relic: <your relic>"[/b] in her normal menu.
-[*][b]Bind up to 2 perks[/b] you want to keep - 5 Brinebeast Ore each, per roll.
-[*][b]Confirm the cost[/b]: 10 Wyrmslife Crystals, rising each reroll of the same relic to a cap of 100 (the 10th roll). Optionally add a boost: [b]+10 / +25 / +50 Wyrmslife[/b] buys a [b]12.5% / 25% / 50%[/b] chance that the roll carries at least one enhanced (^) or tier III perk.
-[*][b]The reveal[/b] shows every perk as "current > new". Take the new roll, keep your current perks, or roll again with your binds intact. The cost is spent either way - riven rules.
+[*]Talk to Jiera and pick [b]"Reforge Relic"[/b]. The screen lists the [b]unequipped level 5 relics in your bag[/b], with their current perks and how many times each has been reforged.
+[*][b]Bind up to 2 perks[/b]: press [b]View Details[/b] ([b]R3[/b] on controller, [b]V[/b] on keyboard) on a relic to move to its perks, [b]Confirm[/b] to bind or unbind, [b]Back[/b] to return. 5 Brinebeast Ore per bind, per roll.
+[*][b]Confirm on the relic[/b] to open the reforge popup: 10 Wyrmslife Crystals, rising each reroll of the same relic to a cap of 100 (the 10th roll). Left/right adds a boost: [b]+10 / +25 / +50 Wyrmslife[/b] buys a [b]12.5% / 25% / 50%[/b] chance that the roll carries at least one enhanced (^) or tier III perk.
+[*][b]The reveal[/b] plays on the game's own appraisal result screen, new perks beside the current ones. From the item's menu: take the new roll, keep your current perks, or roll again with your binds intact. The cost is spent either way - riven rules.
 [/list]
+The key-guide strip at the bottom spells out each step, with the game's own button icons for whichever device you're using.
+
 Rerolls never change how many perks a relic has, never duplicate a perk, and never stack two tiers of the same perk. Perk names and the ^ enhanced marker are the game's own, in every language.
 
 [b]Satanchia's signature:[/b] Battle Frenzy can only come from his spoils, at the tier he dropped it. On his relics it binds itself - inherent, free, immovable - and uses one of your two bind slots. No reroll can grant, move, remove or re-tier it.
 
 [size=4][b]Tempering (Hal)[/b][/size]
-Jiera never touches elements - elements are smith's work. Mark a [b]weapon[/b] and talk to Hal: [b]"Temper Weapon"[/b] rerolls its element bonus for Morbid Glare.
+Jiera never touches elements - elements are smith's work. Talk to Hal and pick [b]"Temper Weapon"[/b]: the same screen opens as [b]Weapon Temper[/b], listing your carried, unequipped weapons with their current element. Confirm one and choose how much Morbid Glare to spend:
 [list]
 [*][b]1 Morbid Glare[/b] - the game's own element odds (elements are the jackpot, ~1 in 18)
 [*][b]2 Morbid Glare[/b] - even odds of an element
 [*][b]3 Morbid Glare[/b] - an element, guaranteed
 [/list]
-Which element is always the game's roll - and level 5 weapons can land [b]Light[/b], which this mod restores to their table. One thing to know, straight from the game's data: an item holds exactly [i]one[/i] appraisal bonus - an element, OR a stat boost, OR one enhanced perk. Taking an element replaces whatever bonus the weapon had, and the screen warns you before you do.
+Then take the new element, keep the current one, or temper again. Which element is always the game's roll - and level 5 weapons can land [b]Light[/b], which this mod restores to their table. One thing to know, straight from the game's data: an item holds exactly [i]one[/i] appraisal bonus - an element, OR a stat boost, OR one enhanced perk. Taking an element replaces whatever bonus the weapon had, and the screen warns you before you do.
 
 [size=4][b]The economy[/b][/size]
 Hal's shop now sells [b]Wyrmslife Crystals (1,000 g)[/b] and [b]Brinebeast Ore (1,500 g)[/b] in place of his lantern supplies (every other vendor still sells those). Four recipes are added to the Combine menu - nothing vanilla is replaced:
@@ -49,10 +51,10 @@ A status/debug panel lives in the REFramework menu (Insert) under Script Generat
 
 [size=4][b]Safety and compatibility[/b][/size]
 [list]
-[*]The mod never opens a screen of its own (script-driven menus crash DD2) - it edits the game's own menu rows inside the game's own calls, after the architecture of [url=https://www.nexusmods.com/dragonsdogma2/mods/1341]Guild Contracts[/url].
+[*]The mod never opens a screen of its own (script-driven menus crash DD2). The game opens Jiera's appraisal screen itself, and the mod only feeds it inside the screen's own update; talk-menu rows are edited inside the game's own calls, after the architecture of [url=https://www.nexusmods.com/dragonsdogma2/mods/1341]Guild Contracts[/url].
 [*]Perk writes go through the game's own appraisal-update call and are verified; a crash mid-reforge can't eat your item (custody record + recovery), and every failed payment refunds.
 [*]No game files are replaced: the shop, pools and recipes are edits to loaded data, reapplied automatically when the game rebuilds its tables. Removing the mod removes everything except perks you already rolled onto items, which are ordinary save data.
-[*]Not tested with other mods that edit Hal's shop (shop 201), the appraisal tables or the Combine registries.
+[*]Not tested with other mods that edit Hal's shop (shop 201), Jiera's appraisal screen, the appraisal tables or the Combine registries.
 [/list]
 
 [size=4][b]Source[/b][/size]
