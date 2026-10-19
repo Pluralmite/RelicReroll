@@ -1,22 +1,26 @@
 --[[
-  Relic Reroll v1.0.0  —  Dragon's Dogma 2: Dark Arisen  (REFramework script)
+  Relic Reroll v1.1.0  —  Dragon's Dogma 2: Dark Arisen  (REFramework script)
   by Pluralmite  ·  source: github.com/Pluralmite/RelicReroll
   Install: <DD2>/reframework/autorun/RelicReroll.lua
            <DD2>/reframework/data/RelicReroll_origins.json   (required data)
 
   WHAT IT DOES
-    Reforge (Jiera): mark a level 5 relic in storage/inventory (view its card,
-      press R / click R3), then talk to Jiera -> "Reforge Relic". Bind up to 2
-      perks (5 Brinebeast Ore each; Satanchia's Battle Frenzy is inherent: it
-      binds itself, for free, and takes one of the two bind slots), pay
-      Wyrmslife (10 rising to 100 per reroll of the same relic), then riven
-      style: see the new roll next to the current perks and take it, keep the
-      old, or roll again. Optional Wyrmslife boost tiers buy odds of a roll
-      carrying an enhanced (^) or tier III perk. The roll is the game's own
-      appraisal roll for that relic's spoil.
-    Temper (Hal): mark a weapon, talk to Hal -> "Temper Weapon" to reroll its
-      element bonus for Morbid Glare (1 = the game's own odds, 2 = even odds
-      of an element, 3 = an element guaranteed). Jiera never touches elements.
+    Reforge (Jiera): talk to Jiera -> "Reforge Relic". Her appraisal screen
+      opens as "Relic ReRoll", listing the unequipped level 5 relics you carry.
+      View Details (R3 / V) on a relic opens its perks: confirm toggles a bind
+      (up to 2, 5 Brinebeast Ore each; Satanchia's Battle Frenzy is inherent:
+      it binds itself, for free, and takes one of the two bind slots). Confirm
+      on the relic opens the reforge popup: pick a Wyrmslife boost tier (odds
+      of an enhanced (^) or tier III perk) and pay (10 Wyrmslife rising to 100
+      per reroll of the same relic). The roll plays on the game's own appraisal
+      result screen beside the current perks, riven style: take it, keep the
+      old, or roll again. The roll is the game's own appraisal roll for that
+      relic's spoil.
+    Temper (Hal): talk to Hal -> "Temper Weapon". The same screen opens as
+      "Weapon Temper", listing the unequipped weapons you carry with their
+      element; confirm one, pick a Morbid Glare tier (1 = the game's own odds,
+      2 = even odds of an element, 3 = an element guaranteed), and take or keep
+      the rolled element on the result screen. Jiera never touches elements.
     Hal's shop sells Wyrmslife Crystals and Brinebeast Ore (the Lantern Oil /
       Lantern (Fueled) rows are repointed; other vendors still sell those).
     Combine recipes: Malecryst Shard x2 -> Malecryst, Malecryst x2 -> Ore x2,
@@ -31,10 +35,15 @@
                machine. No game calls; tested outside the game (tools/harness).
     Game     — the only code that touches DD2 types; all bindings were verified
                against the running game.
-    Menu     — Jiera's and Hal's native talk menus. Nothing is ever displayed
-               by the script itself: rows are edited inside the game's own
-               display calls and selections remapped to native choices, after
-               the architecture of Guild Contracts (nexusmods dd2/1341).
+    Menu     — Jiera's and Hal's native talk menus: "Reforge Relic" and
+               "Temper Weapon" rows are added inside the game's own display
+               call and remapped to native choices (after the architecture of
+               Guild Contracts, nexusmods dd2/1341). The talk-row screens remain
+               as a fallback.
+    Screens  — the Relic ReRoll / Weapon Temper screens are Jiera's own
+               appraisal screen (ui042001), opened by the game itself and fed
+               inside its own update: the grid, perk list, number popup, result
+               reveal and key-guide hints are all the game's widgets.
     Debug UI — REFramework window (Script Generated UI > Relic Reroll).
 ]]
 
@@ -110,6 +119,11 @@ local CONFIG = {
         menu_label = "Temper Weapon",
         markers    = { "Manufacture", "Tailor equipment" },   -- rows unique to Hal's talk menu
         cost_item  = 715,   -- Morbid Glare
+        native        = true,             -- temper on Jiera's appraisal screen (opened from Hal's menu)
+        native_option = "Manufacture",    -- Hal's row whose screen request is swapped for it
+        native_title  = "Weapon Temper",
+        manufacture_gui = 102,            -- app.GuiDefine.GuiType of Hal's Manufacture screen
+        appraisal_shop  = 200,            -- the shop id Jiera's own Appraise passes
         tiers = {   -- pay more Morbid Glare for better element odds
             { cost = 1 },                        -- the game's own odds (~1 in 18)
             { cost = 2, element_chance = 0.5 },  -- even odds of an element
@@ -126,6 +140,7 @@ local CONFIG = {
     holy_patch_spoil_level = 5,
 
     menu_label        = "Reforge Relic",
+    mark_keys         = false,  -- legacy R / R3 marking in storage (replaced by the native picker and Hal's list)
     select_key        = 0x52,   -- keyboard R: marks the relic whose card is on screen
     pad_mark_button   = 0x2000, -- controller R3 (right stick click): same, via.hid.GamePadButton
     overlay           = true,   -- on-screen mark hint/toast (drawn by REFramework, not the game UI)
@@ -134,6 +149,17 @@ local CONFIG = {
     -- Jiera menu stage: "inject" = option shows, picking it closes like Cancel (safe test)
     --                   "full"   = option opens the reforge screens inside her talk
     jiera_markers     = { "Appraise", "Trade Spoils for Rift Crystals" },  -- how her menu is recognised
+    -- Show each paid roll on Jiera's own appraisal result screen (reveal
+    -- animation + the game's before/after perk window). false = talk-menu rows.
+    native_reveal        = true,
+    native_reveal_option = "Appraise",   -- her native row that opens the appraisal screen
+    native_title         = "Relic ReRoll",  -- the screen's title while it shows a reforge
+    -- "Reforge Relic" opens the same screen listing your unequipped Lv5 relics
+    -- (in place of spoils); confirming one starts the reforge on it.
+    native_pick          = true,
+    inspect_key          = 0x56,     -- keyboard V: read the highlighted relic's perk descriptions
+    pad_inspect_button   = 0x2000,   -- controller R3: same
+    inspect_guide_tag    = "MapMarker", -- the game's own "View Details" action (R3 / V by default): device-correct icon
 }
 
 ---------------------------------------------------------------------------
@@ -697,6 +723,29 @@ function Game.list_relic_items(origins)
     return out
 end
 
+-- Weapons Hal can temper: carried (not storage), unequipped, appraised, with
+-- spoil origin data (the element roll needs it).
+function Game.list_weapons(origins)
+    local out, pid = {}, player_id()
+    local sd = im() and im():get_field("StorageDict")
+    if not sd or not pid then return out end
+    list_each(dict_get(sd, pid), function(master)
+        local p = master:get_field("_Param")
+        local slots, appraised = read_slots(p)
+        local item_id = p:get_field("_ItemId")
+        if appraised and p:get_field("_IsEquipped") ~= true and Game.is_weapon(item_id)
+           and (not origins or origins[item_id]) then
+            out[#out + 1] = {
+                uid = tostring(p:get_field("_StorageId")) .. ":" .. tostring(item_id),
+                storage_id = p:get_field("_StorageId"), item_id = item_id, owner = pid,
+                equipped = false, name = item_name(p), master = master,
+            }
+        end
+    end)
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
 -- Re-find the live StorageMasterData each time (lists can be rebuilt).
 local function find_master(item)
     local found
@@ -757,9 +806,11 @@ function Game.spend_item(item_id, n)              -- storage box first, then car
     if Game.count_item(item_id) ~= before - n then return false, "count mismatch after spending" end
     return true
 end
+-- Refunds go back to the storage box: costs are taken from the box first, so
+-- this is where they came from (and the bag count never "grows" from a refund).
 function Game.give_item(item_id, n)
     if n <= 0 then return true end
-    return pcall(im().call, im(), SIG.give, item_id, n, player_id())
+    return pcall(im().call, im(), SIG.give, item_id, n, ID.box)
 end
 function Game.spend(kind, n) return Game.spend_item(ID[kind], n) end
 function Game.give(kind, n)
@@ -842,40 +893,71 @@ local function roll_is_special(merged, locks)
     return false
 end
 
+-- One draw from the game's own appraisal roll for this relic, merged with the
+-- bound perks. Returns a valid merged roll, or nil when this draw can't be
+-- used (wrong item from the spoil, duplicate/tier clash, stray innate perk).
+local function draw_once(item, before, locks, pool, mgr)
+    local o = pool[math.random(#pool)]
+    local arr = safe(function() return mgr:call(SIG.roll, o.spoil, o.job, math.random(1, 0x3FFFFFFF), math.random(1, 0x3FFFFFFF)) end)
+    local els = arr and safe(function() return arr:get_elements() end)
+    for _, info in ipairs(els or {}) do
+        if info:get_field("ItemId") == item.item_id then
+            local a = info:get_field("Ability")
+            local rolled = { a:get_field("Slot1"), a:get_field("Slot2"), a:get_field("Slot3"), a:get_field("Slot4") }
+            local merged = Core.merge_roll(before, rolled, locks, perk_enum, CONFIG)
+            if merged then
+                -- innate families (Battle Frenzy) may only sit in their bound
+                -- slot — a roll that grants one anywhere else is discarded
+                for s = 1, 4 do
+                    local pid = merged[s] or 0
+                    if pid ~= 0 and not locks[s] and Game.innate_perk(pid) then return nil end
+                end
+                merged.bonus = Core.reforge_bonus(before.bonus, tonumber(a:get_field("Bonus")) or 0, merged, locks)
+                merged.special = roll_is_special(merged, locks)
+                return merged
+            end
+        end
+    end
+    return nil
+end
+
 function Game.roll(item, before, locks, want_special)
     local pool, err = pick_origin(item, before)
     if not pool then return nil, err end
     local mgr = iam()
     local fallback
     for _ = 1, want_special and 900 or 600 do
-        local o = pool[math.random(#pool)]
-        local arr = safe(function() return mgr:call(SIG.roll, o.spoil, o.job, math.random(1, 0x3FFFFFFF), math.random(1, 0x3FFFFFFF)) end)
-        local els = arr and safe(function() return arr:get_elements() end)
-        for _, info in ipairs(els or {}) do
-            if info:get_field("ItemId") == item.item_id then
-                local a = info:get_field("Ability")
-                local rolled = { a:get_field("Slot1"), a:get_field("Slot2"), a:get_field("Slot3"), a:get_field("Slot4") }
-                local merged = Core.merge_roll(before, rolled, locks, perk_enum, CONFIG)
-                if merged then
-                    -- innate families (Battle Frenzy) may only sit in their bound
-                    -- slot — a roll that grants one anywhere else is discarded
-                    local tainted = false
-                    for s = 1, 4 do
-                        local pid = merged[s] or 0
-                        if pid ~= 0 and not locks[s] and Game.innate_perk(pid) then tainted = true; break end
-                    end
-                    if not tainted then
-                        merged.bonus = Core.reforge_bonus(before.bonus, tonumber(a:get_field("Bonus")) or 0, merged, locks)
-                        merged.special = roll_is_special(merged, locks)
-                        if not want_special or merged.special then return merged end
-                        fallback = fallback or merged
-                    end
-                end
-            end
+        local merged = draw_once(item, before, locks, pool, mgr)
+        if merged then
+            if not want_special or merged.special then return merged end
+            fallback = fallback or merged
         end
     end
     if fallback then return fallback end   -- the boost coin was won but no special roll exists
     return nil, "no matching roll found (try again)"
+end
+
+-- How often this relic, with these binds, naturally rolls a ^ / tier III perk:
+-- the share of valid draws that are special. 0 means the boost can't help,
+-- so the confirm screen hides it. Cached per relic + bind set.
+local ODDS = {}
+function Game.special_odds(item, before, locks, draws)
+    local key = tostring(item.uid) .. ":" .. (locks[1] and 1 or 0) .. (locks[2] and 1 or 0) .. (locks[3] and 1 or 0) .. (locks[4] and 1 or 0)
+    if ODDS[key] then return ODDS[key] end
+    local pool = pick_origin(item, before)
+    if not pool then return 0 end
+    local mgr = iam()
+    local valid, hits = 0, 0
+    for _ = 1, draws or 400 do
+        local merged = draw_once(item, before, locks, pool, mgr)
+        if merged then
+            valid = valid + 1
+            if merged.special then hits = hits + 1 end
+        end
+    end
+    local p = valid > 0 and hits / valid or 0
+    ODDS[key] = p
+    return p
 end
 
 -- Tempering (Hal): reroll ONLY the element bonus, weapons only.
@@ -1228,7 +1310,7 @@ local flow = Flow.new({
     get_perks = Game.get_perks, set_perks = Game.set_perks, roll = Game.roll,
     count = Game.count, spend = Game.spend, give = Game.give, innate = Game.innate_perk,
 })
-RelicReroll = { flow = flow, Game = Game, Core = Core, CONFIG = CONFIG }   -- for the menu layer + debugging
+RelicReroll = { flow = flow, Game = Game, Core = Core, CONFIG = CONFIG }   -- for the menu layer + debugging (Menu/Native added below)
 
 -- Everything that calls into the game runs here, in the game's own update phase.
 -- re.on_frame / re.on_draw_ui run on the render side; calling game menus or
@@ -1347,7 +1429,7 @@ function build.pick()
     Menu.page = math.min(math.max(Menu.page, 1), pages)
     local r = {}
     if #items == 0 then r[#r + 1] = { text = "No relics to reforge.", sel = false } end
-    if not Mark.marked then r[#r + 1] = { text = "(Tip: view a relic in storage and press R to bring it here.)", sel = false } end
+    if CONFIG.mark_keys and not Mark.marked then r[#r + 1] = { text = "(Tip: view a relic in storage and press R to bring it here.)", sel = false } end
     for i = (Menu.page - 1) * PAGE + 1, math.min(#items, Menu.page * PAGE) do
         local it = items[i]
         if it.equipped then
@@ -1380,6 +1462,10 @@ end
 local function boost_rows(r, q, have_w, back_act)
     local jb = CONFIG.jiera_boost
     if not (jb and jb.enabled) then return end
+    if Menu.special_p == 0 then
+        r[#r + 1] = { text = "(No boost: this relic can't roll a ^ or tier III perk here)", sel = false }
+        return
+    end
     for i, t in ipairs(jb.tiers or {}) do
         local extra = CONFIG.free_mode and 0 or t.wyrmslife
         local label = string.format("... +%d Wyrmslife:  %d%% for a ^ / tier III perk", extra, math.floor(t.chance * 100 + 0.5))
@@ -1451,10 +1537,25 @@ local function tier_label(tier)
         or ""
     return "Temper for " .. glare_text(temper_cost(tier)) .. tail
 end
+-- Hal's weapon list: your carried, unequipped weapons, with their element.
+function build.t_pick()
+    local items = Game.list_weapons(Origins.map)
+    local pages = math.max(1, math.ceil(#items / PAGE))
+    Menu.page = math.min(math.max(Menu.page, 1), pages)
+    local r = {}
+    if #items == 0 then r[#r + 1] = { text = "Carry an unequipped weapon to temper it.", sel = false } end
+    for i = (Menu.page - 1) * PAGE + 1, math.min(#items, Menu.page * PAGE) do
+        local it = items[i]
+        r[#r + 1] = { text = it.name .. "   (" .. Core.elem_name(Game.get_bonus(it) or 0) .. ")", act = "t_item", item = it }
+    end
+    if pages > 1 then r[#r + 1] = { text = string.format("Next page  (%d of %d)", Menu.page, pages), act = "next" } end
+    r[#r + 1] = { text = "Never mind", act = "leave_to_menu" }
+    return r
+end
 function build.t_confirm()
     local r = {}
     if not T.item then
-        r[#r + 1] = { text = "Mark a weapon first: view it in storage and press R.", sel = false }
+        r[#r + 1] = { text = "Choose a weapon first.", sel = false }
         r[#r + 1] = { text = "Never mind", act = "leave_to_menu" }
         return r
     end
@@ -1497,6 +1598,34 @@ function build.again()
     return r
 end
 
+-- While the native reveal is up the talk list is not showing; if it ever
+-- redisplays in this state (the appraisal screen did not open), fall back to
+-- the talk-row reveal of the same offer.
+function build.native() return build.reveal() end
+
+-- NATIVE REVEAL state (the hooks live with the other ui hooks further down).
+local GUIDE = { keys = nil, explain = nil }   -- the key-guide HUD's texts (see guide_set)
+local guide_find, guide_hide, guide_set                 -- defined with the relic screen below
+-- Managed strings handed to the game for keeps (labels, hints) are created
+-- once and held for good: the game may keep pointing at them.
+local HELD = {}
+local function held_str(text)
+    local o = HELD[text]
+    if not o then o = sdk.create_managed_string(text):add_ref(); HELD[text] = o end
+    return o
+end
+local Native = { route = false, ready = false, abort = false, active = false,
+                 close = false, decided = nil, old_vt = nil, saved = nil, t0 = 0 }
+local function native_wanted() return CONFIG.native_reveal and Menu.appraise_idx ~= nil end
+-- NATIVE PICK state: the same screen as a relic picker.
+local Pick = { route = false, active = false, t0 = 0, items = nil, kind = "reforge" }
+local function temper_mode() return Pick.kind == "temper" end
+local function screen_title()
+    return temper_mode() and CONFIG.hal_temper.native_title or CONFIG.native_title
+end
+RelicReroll.Pick = Pick
+RelicReroll.Menu, RelicReroll.Native = Menu, Native
+
 -- Game-data work queued from the pick handler, run in UpdateBehavior.
 local function do_action(a)
     local act = a.act
@@ -1510,16 +1639,25 @@ local function do_action(a)
     elseif act == "lock" then
         local ok, err = flow:toggle_lock(a.slot)
         if not ok then Menu.note = tostring(err) end
-    elseif act == "reforge" then flow:request_reroll(); Menu.state = "confirm"
-    elseif act == "to_pick" then flow:cancel(); flow:open(); Menu.state = "pick"
+    elseif act == "reforge" then
+        flow:request_reroll()
+        Menu.special_p = Game.special_odds(flow.item, flow.before, flow.locks)
+        Menu.state = "confirm"
+    elseif act == "to_pick" then
+        flow:cancel()
+        if CONFIG.native_pick then Menu.state = nil          -- back to her menu
+        else flow:open(); Menu.state = "pick" end
     elseif act == "yes" then
         local jb = CONFIG.jiera_boost
         local boost = a.boost and jb and jb.tiers and jb.tiers[a.boost] or nil
         local ok, err = flow:confirm(boost)
         if ok then
             Menu.note = flow.boost_note
-            Menu.state = "reveal"
-        else Menu.note = tostring(err); flow:back(); Menu.state = "locks" end
+            if a.native then Native.ready = true; Menu.state = "native" else Menu.state = "reveal" end
+        else
+            Native.abort = true
+            Menu.note = tostring(err); flow:back(); Menu.state = "locks"
+        end
     elseif act == "to_locks" then flow:back(); Menu.state = "locks"
     elseif act == "take_new" then
         local ok, err = flow:apply_new()
@@ -1528,22 +1666,84 @@ local function do_action(a)
     elseif act == "keep_old" or act == "keep_old_quiet" then flow:keep_old(); Menu.state = nil
     elseif act == "again" then
         local ok, err = flow:request_again()
-        if ok then Menu.state = "again" else Menu.note = tostring(err); Menu.state = "reveal" end
+        if ok then
+            Menu.special_p = Game.special_odds(flow.item, flow.before, flow.locks)
+            Menu.state = "again"
+        else Menu.note = tostring(err); Menu.state = "reveal" end
     elseif act == "yes_again" then
         local jb = CONFIG.jiera_boost
         local boost = a.boost and jb and jb.tiers and jb.tiers[a.boost] or nil
         local ok, err = flow:roll_again(boost)
-        if ok then Menu.note = flow.boost_note else Menu.note = tostring(err) end
+        if ok then
+            Menu.note = flow.boost_note
+            if a.native then Native.ready = true; Menu.state = "native"; return end
+        else
+            Native.abort = true
+            Menu.note = tostring(err)
+        end
         Menu.state = "reveal"
+    -- the Relic ReRoll screen: pay + roll from the boost popup
+    elseif act == "s_roll" then
+        local jb = CONFIG.jiera_boost
+        local boost = a.boost and jb and jb.tiers and jb.tiers[a.boost] or nil
+        flow:request_reroll()
+        local ok, err = flow:confirm(boost)
+        if ok then
+            Pick.boost = a.boost
+            Pick.active = false
+            Native.route, Native.ready, Native.abort, Native.decided, Native.close = true, true, false, nil, false
+            Native.t0 = os.clock()
+        else
+            flow:back()
+            Pick.msg, Pick.msg_t = tostring(err), os.clock()
+        end
+    elseif act == "s_again" then
+        local jb = CONFIG.jiera_boost
+        local boost = Pick.boost and jb and jb.tiers and jb.tiers[Pick.boost] or nil
+        local ok, err = flow:request_again()
+        if ok then ok, err = flow:roll_again(boost) end
+        if ok then
+            Pick.after = "again"
+            Native.route, Native.ready, Native.abort, Native.t0 = true, true, false, os.clock()
+        else
+            flow:keep_old()
+            Pick.msg, Pick.msg_t = tostring(err), os.clock()
+            Pick.after = "grid"
+        end
+    -- decisions made on the native result screen
+    elseif act == "n_take" then
+        local ok, err = flow:apply_new()
+        if not ok then Menu.note = tostring(err); Pick.msg, Pick.msg_t = tostring(err), os.clock() end
+        mlog("native reveal: took the new roll")
+        Menu.state = nil
+        Pick.after = "grid"
+    elseif act == "n_keep" then
+        flow:keep_old()
+        mlog("native reveal: kept the current perks")
+        Menu.state = nil
+        Pick.after = "grid"
+    elseif act == "n_again" then
+        local ok, err = flow:request_again()
+        if ok then
+            Menu.special_p = Game.special_odds(flow.item, flow.before, flow.locks)
+            Menu.state = "again"
+        else Menu.note = tostring(err); flow:keep_old(); Menu.state = nil end
     elseif act == "to_reveal" then Menu.state = "reveal"
     elseif act == "t_open" then
         if not Game.origins_ready() then Menu.note = tostring(Game.origins_error()); Menu.state = nil; return end
         T.item, T.rolled = nil, nil
-        local m = Mark.marked
+        local m = CONFIG.mark_keys and Mark.marked
         if m and Game.is_weapon(m.item_id) then
             T.item = m
             T.cur = Game.get_bonus(m) or 0
+            Menu.state = "t_confirm"
+        else
+            Menu.page = 1
+            Menu.state = "t_pick"
         end
+    elseif act == "t_item" then
+        T.item, T.rolled = a.item, nil
+        T.cur = Game.get_bonus(a.item) or 0
         Menu.state = "t_confirm"
     elseif act == "t_yes" then
         local c = CONFIG.hal_temper
@@ -1571,20 +1771,65 @@ local function do_action(a)
         if not ok then
             Game.give_item(CONFIG.hal_temper.cost_item, T.paid or 0)
             Menu.note = tostring(err) .. " (refunded)"
+            Pick.msg, Pick.msg_t = tostring(err) .. " (refunded)", os.clock()
+        else
+            mlog("temper: took " .. Core.elem_name(Core.temper_bonus(T.cur, T.rolled)) .. " on " .. T.item.name)
         end
+        T.rolled = nil
         Menu.state = nil
-    elseif act == "t_keep" then Menu.state = nil
+        if Pick.studio then Pick.after = "grid" end
+    elseif act == "t_keep" then
+        T.rolled = nil
+        Menu.state = nil
+        if Pick.studio then Pick.after = "grid" end
+    -- the Weapon Temper screen: pay + roll from the tier popup
+    elseif act == "ts_roll" or act == "ts_again" then
+        local tier_i = (act == "ts_again") and (T.tier or 1) or (a.tier or 1)
+        local c = CONFIG.hal_temper
+        local tier = (c.tiers or {})[tier_i] or { cost = 1 }
+        local price = temper_cost(tier)
+        local ok, err = Game.spend_item(c.cost_item, price)
+        local rolled, rerr
+        if ok then
+            if tier.element_chance and math.random() >= tier.element_chance then
+                rolled = 0
+            else
+                rolled, rerr = Game.roll_element(T.item, tier.element_chance ~= nil)
+            end
+            if rolled == nil then Game.give_item(c.cost_item, price); err = tostring(rerr) .. " (refunded)" end
+        else
+            err = "Not enough " .. item_name_by_id(c.cost_item)
+        end
+        if rolled ~= nil then
+            T.rolled, T.paid, T.tier = rolled, price, tier_i
+            mlog(string.format("temper %s (tier %d, %d glare): %s -> %s", T.item.name, tier_i, price, Core.elem_name(T.cur), Core.elem_name(rolled)))
+            Pick.active = false
+            if act == "ts_again" then
+                Pick.after = "again"                      -- the screen is still clearing the last result
+                Native.route, Native.ready, Native.abort = true, true, false
+            else
+                Native.route, Native.ready, Native.abort, Native.decided, Native.close = true, true, false, nil, false
+            end
+            Native.t0 = os.clock()
+        else
+            T.rolled = nil
+            Pick.msg, Pick.msg_t = tostring(err), os.clock()
+            if act == "ts_again" then Pick.after = "grid" end
+        end
     elseif act == "grabbed" then
         local elig, why = Game.reforge_eligible(a.item.item_id)
         if not elig then
             Menu.note = "Jiera reforges " .. (why or "other relics") .. "."
-            flow:open(); Menu.page = 1; Menu.state = "pick"
+            if CONFIG.native_pick then Menu.state = nil else flow:open(); Menu.page = 1; Menu.state = "pick" end
             return
         end
         flow:open()
         local ok, err = flow:choose_item(a.item)
         if ok then Menu.state = "locks"
-        else Menu.note = tostring(err); Menu.page = 1; Menu.state = "pick" end
+        else
+            Menu.note = tostring(err)
+            if CONFIG.native_pick then flow:cancel(); Menu.state = nil else Menu.page = 1; Menu.state = "pick" end
+        end
     elseif act == "leave_to_menu" then
         if flow.state ~= S.IDLE then flow:cancel() end
         Menu.state = nil
@@ -1625,13 +1870,31 @@ sdk.hook(REQDISP, function(args)
         Menu.npc = npc
         Menu.template = list:get_field("_items"):get_element(0):add_ref()
         Menu.talk_idx, Menu.cancel_idx = #msgs - 2, #msgs - 1
+        Menu.appraise_idx, Menu.manufacture_idx = nil, nil
         for i, m in ipairs(msgs) do
             if m == "Talk" then Menu.talk_idx = i - 1 end
             if m == "Cancel" then Menu.cancel_idx = i - 1 end
+            if npc == "jiera" and m == CONFIG.native_reveal_option then Menu.appraise_idx = i - 1 end
+            if npc == "hal" and m == CONFIG.hal_temper.native_option then Menu.manufacture_idx = i - 1 end
+        end
+        -- Her talk list is back: the appraisal screen is not up (anymore).
+        if Native.route or Native.active then
+            mlog(string.format("native reveal: talk list came back (route=%s active=%s)", tostring(Native.route), tostring(Native.active)))
+            if Native.active and not Native.decided then Menu.pending = { act = temper_mode() and "t_keep" or "n_keep" } end   -- riven rule
+            Native.route, Native.active, Native.close = false, false, false
+        end
+        if Menu.state == "native" then Menu.state = "reveal" end   -- screen never opened: talk-row reveal
+        if Pick.studio or Pick.active or Pick.route then
+            pcall(guide_hide, false)
+            mlog("screen: talk list came back -> screen closed")
+            Pick.route, Pick.active, Pick.items, Pick.studio, Pick.mode = false, false, nil, false, nil
+            Pick.swap_t, GUIDE.reveal = nil, false
+            if flow.state == S.SELECT or flow.state == S.LOCKS or flow.state == S.CONFIRM then flow:cancel() end
+            Menu.state = nil
         end
         if Menu.state == nil then
             local base = (npc == "hal") and CONFIG.hal_temper.menu_label or CONFIG.menu_label
-            local show_mark = Mark.marked and ((npc == "jiera" and Game.reforge_eligible(Mark.marked.item_id))
+            local show_mark = CONFIG.mark_keys and Mark.marked and ((npc == "jiera" and not CONFIG.native_pick and Game.reforge_eligible(Mark.marked.item_id))
                                                or (npc == "hal" and Game.is_weapon(Mark.marked.item_id)))
             local label = base .. (show_mark and (":  " .. Mark.marked.name) or "")
             for i, m in ipairs(msgs) do
@@ -1677,6 +1940,7 @@ if UVM then
         pcall(function()
             local p = sdk.to_valuetype(args[3], "app.ItemDefine.StorageData")
             local a = p and p:get_field("_Ability")
+            if not CONFIG.mark_keys then return end
             if not a or not a:get_field("IsAppraised") then return end
             -- The compare panel draws the EQUIPPED item's card alongside whatever
             -- is being viewed; equipped gear can't be reforged, so never let it
@@ -1688,6 +1952,11 @@ if UVM then
             local item = { storage_id = p:get_field("_StorageId"), item_id = p:get_field("_ItemId"),
                            owner = p:get_field("_CharaId"), equipped = p:get_field("_IsEquipped") == true,
                            name = Game.item_display_name(p) }
+            -- a reveal's result card (and any not-yet-owned appraisal result) has no
+            -- storage slot yet: it is not a relic you can mark
+            if (item.storage_id or 0) == 0 or Native.active or Pick.active then return end
+            -- with Jiera's relic picker, marking only serves Hal (weapons)
+            if CONFIG.native_pick and not Game.is_weapon(item.item_id) then return end
             item.uid = tostring(item.storage_id) .. ":" .. tostring(item.item_id)
             Mark.hover = { t = os.clock(), item = item }
         end)
@@ -1711,6 +1980,7 @@ re.on_pre_application_entry("UpdateBehavior", function()
     kdown = (okk and kdown) or false
     local pdown = (pad_buttons() & CONFIG.pad_mark_button) ~= 0
     local edge = (kdown and not key_was_down) or (pdown and not pad_was_down)
+    if not CONFIG.mark_keys then key_was_down, pad_was_down = kdown, pdown; return end
     key_was_down, pad_was_down = kdown, pdown
     if not edge then return end
     local h = Mark.hover
@@ -1721,7 +1991,7 @@ re.on_pre_application_entry("UpdateBehavior", function()
         return
     end
     Mark.marked = h.item
-    Mark.flash, Mark.flash_t = "Marked for reforging: " .. h.item.name, os.clock()
+    Mark.flash, Mark.flash_t = (CONFIG.native_pick and "Marked for tempering: " or "Marked for reforging: ") .. h.item.name, os.clock()
     mlog("marked: " .. h.item.name .. " [" .. h.item.uid .. "]")
 end)
 
@@ -1729,7 +1999,7 @@ end)
 -- reads mod state only — never touches the game). Visible without opening the
 -- REFramework menu, works the same on keyboard and controller.
 re.on_frame(function()
-    if not CONFIG.overlay then return end
+    if not CONFIG.overlay or not CONFIG.mark_keys then return end
     local now = os.clock()
     local h = Mark.hover
     local hov = (h and now - h.t < 0.6) and h.item or nil
@@ -1741,9 +2011,9 @@ re.on_frame(function()
     if flash then draw.text(flash, x, y, 0xFF7BE0FF); y = y + 22 end
     if hov then
         if Mark.marked and Mark.marked.uid == hov.uid then
-            if not flash then draw.text("Marked for reforging  --  bring it to Jiera", x, y, 0xFF7BE0FF) end
+            if not flash then draw.text(CONFIG.native_pick and "Marked for tempering  --  bring it to Hal" or "Marked for reforging  --  bring it to Jiera", x, y, 0xFF7BE0FF) end
         else
-            draw.text("Press R (R3 on controller) to mark " .. hov.name .. " for reforging", x, y, 0xFFE8E8E8)
+            draw.text("Press R (R3 on controller) to mark " .. hov.name .. (CONFIG.native_pick and " for Hal's tempering" or " for reforging"), x, y, 0xFFE8E8E8)
         end
     end
 end)
@@ -1757,11 +2027,25 @@ sdk.hook(SETFLOW, function(args)
         if Menu.state == nil then
             if Menu.ours == nil then return end
             if sel == Menu.ours then
-                if Menu.npc == "hal" then
+                if Menu.npc == "hal" and CONFIG.native_pick and CONFIG.hal_temper.native
+                   and Menu.manufacture_idx and Game.origins_ready() then
+                    Pick.route, Pick.active, Pick.t0, Pick.kind = true, false, os.clock(), "temper"
+                    Pick.swap_t = os.clock()                      -- his Manufacture request becomes the appraisal screen
+                    ts:set_field("SelectedIndex", Menu.manufacture_idx)
+                    mlog("'" .. CONFIG.hal_temper.menu_label .. "' picked -> weapon screen")
+                    Menu.ours = nil
+                    return
+                elseif Menu.npc == "hal" then
                     Menu.pending = { act = "t_open" }
                 elseif not Game.origins_ready() then
                     Menu.pending = { act = "leave_to_menu" }
-                elseif Mark.marked then
+                elseif CONFIG.native_pick and Menu.appraise_idx then
+                    Pick.route, Pick.active, Pick.t0, Pick.kind = true, false, os.clock(), "reforge"
+                    ts:set_field("SelectedIndex", Menu.appraise_idx)   -- her own screen, as a relic picker
+                    mlog("'" .. CONFIG.menu_label .. "' picked -> relic picker")
+                    Menu.ours = nil
+                    return
+                elseif CONFIG.mark_keys and Mark.marked then
                     Menu.pending = { act = "grabbed", item = Mark.marked }
                     mlog("'" .. CONFIG.menu_label .. "' picked -> marked relic: " .. Mark.marked.name)
                 else
@@ -1781,6 +2065,21 @@ sdk.hook(SETFLOW, function(args)
         if act == "leave_to_menu" or act == "accept" then
             Menu.pending = { act = act }
             ts:set_field("SelectedIndex", Menu.talk_idx)        -- back to her menu, via Talk
+        elseif (act == "yes" or act == "yes_again") and not native_wanted() and CONFIG.native_reveal then
+            mlog("native reveal: no Appraise row seen in her menu -> talk-row reveal")
+            Menu.pending = row
+            ts:set_field("SelectedIndex", Menu.talk_idx)
+        elseif (act == "yes" or act == "yes_again") and native_wanted() then
+            -- pay + roll next tick, while the game opens her own appraisal
+            -- screen; the roll is fed to it there (see NATIVE REVEAL)
+            local p = {}
+            for k, v in pairs(row) do p[k] = v end
+            p.native = true
+            Menu.pending = p
+            Native.route, Native.ready, Native.abort, Native.decided = true, false, false, nil
+            Native.t0 = os.clock()
+            ts:set_field("SelectedIndex", Menu.appraise_idx)
+            mlog("native reveal: routing to her Appraise row (index " .. tostring(Menu.appraise_idx) .. ")")
         elseif act then
             Menu.pending = row
             ts:set_field("SelectedIndex", Menu.talk_idx)        -- stay in the loop
@@ -1797,6 +2096,829 @@ sdk.hook(SETFLOW, function(args)
     end)
     if not ok then mlog("setFlowId hook error: " .. tostring(err)) end
 end, function(r) return r end)
+
+-- Hal's "Temper Weapon" is remapped to his own Manufacture row; the game's
+-- request for that screen is answered with Jiera's appraisal screen instead
+-- (the same call her own Appraise makes), which becomes the Weapon Temper
+-- screen. His conversation waits on it like on any menu and resumes after.
+do
+    local GM_T = sdk.find_type_definition("app.GuiManager")
+    local m = GM_T and GM_T:get_method("requestMenuUI")
+    if m then
+        sdk.hook(m, function(args)
+            if not Pick.swap_t then return end
+            local c = CONFIG.hal_temper
+            local gtype = sdk.to_int64(args[3]) & 0xFFFFFFFF
+            if gtype ~= c.manufacture_gui then return end
+            local fresh = os.clock() - Pick.swap_t < 5
+            Pick.swap_t = nil
+            if not fresh then return end
+            local ok, err = pcall(function()
+                sdk.to_managed_object(args[2]):call("requestAppraisalMenu(System.Int32)", c.appraisal_shop)
+            end)
+            mlog("weapon screen: Manufacture request -> appraisal screen " .. (ok and "ok" or ("FAILED: " .. tostring(err))))
+            if ok then return sdk.PreHookResult.SKIP_ORIGINAL end
+            Pick.route = false                                 -- his own screen opens instead
+        end, function(r) return r end)
+    else
+        mlog("WARNING: GuiManager.requestMenuUI not found; Weapon Temper uses the talk list")
+    end
+end
+
+---------------------------------------------------------------------------
+-- NATIVE REVEAL: the paid roll is shown on Jiera's own appraisal result
+-- screen (ui042001). The game opens that screen itself (the confirm pick was
+-- remapped to her native "Appraise" row); we only feed it data inside its own
+-- update: the rolled relic goes into the appraisal manager's result list and
+-- the screen's own successAppraisalAction() takes it from there — reveal
+-- animation, item card, and the before/after perk window, which we point at
+-- the relic's CURRENT perks. Every result command is funnelled into
+-- reserveItem, which we answer ourselves: the decision is queued, the result
+-- is cleared, and nothing is ever created — perks are written onto the
+-- original relic (n_take) or not at all (n_keep / n_again).
+---------------------------------------------------------------------------
+local UI_T = sdk.find_type_definition("app.ui042001")
+local CW_T = sdk.find_type_definition("app.GUIBase.EquipmentAbilityCompareWindowRef")
+local CMD = { TAKE = 0, ARISEN = 1, PAWN = 2, STORE = 3, SELL = 4, CANCEL = 5, FAV = 6 }
+local FLOW_ORDER   = 2    -- app.ui042001.FlowId.DisplayOrder (the spoil list)
+local FLOW_CHECKEND = 7   -- app.ui042001.FlowId.CheckEndMenu (results done?)
+local FLOW_ALLITEMS = 12  -- app.ui042001.FlowId.ExecAllItemAction ("Receive Selected" dialog)
+local FLOW_NUMINPUT = 15  -- app.ui042001.FlowId.InputItemNumResult
+local FLOW_RESERVEFAIL = 16  -- app.ui042001.FlowId.FailReserveResultItem
+local FLOW_FADEOUT = 31   -- app.ui042001.FlowId.FadeOut (leaving the screen)
+
+local function native_label(cmd)
+    if temper_mode() then
+        local nb = Core.temper_bonus(T.cur, T.rolled)
+        if cmd == CMD.TAKE or cmd == CMD.ARISEN or cmd == CMD.PAWN then return "Take the new element: " .. Core.elem_name(nb) end
+        if cmd == CMD.STORE then return "Keep the current element: " .. Core.elem_name(T.cur) end
+        if cmd == CMD.SELL then return "Temper again  (" .. glare_text(temper_cost(CONFIG.hal_temper.tiers[T.tier or 1])) .. ")" end
+        return
+    end
+    if cmd == CMD.TAKE or cmd == CMD.ARISEN or cmd == CMD.PAWN then return "Take the new roll" end
+    if cmd == CMD.STORE then return "Keep the current perks" end
+    if cmd == CMD.SELL then return "Roll again  (" .. fmt_cost(flow:price()) .. ")" end
+end
+local function native_relabel(ui, on)
+    local gp = ui:get_field("AppraisalItemGridPanel")
+    if not gp then return end
+    for _, fname in ipairs({ "EquipDefaultPulldownCommandList", "ItemDefaultPulldownCommandList" }) do
+        local i = 0
+        list_each(gp:get_field(fname), function(li)
+            local key = fname .. i
+            i = i + 1
+            local cmd = li:get_field("CommandId")
+            if on then
+                Native.saved = Native.saved or {}
+                if not Native.saved[key] then Native.saved[key] = { li:get_field("Msg"), li:get_field("IsSelectable") } end
+                local label = native_label(cmd)
+                if label then li:set_field("Msg", held_str(label)) end
+                if cmd == CMD.FAV then li:set_field("IsSelectable", false) end
+            elseif Native.saved and Native.saved[key] then
+                li:set_field("Msg", Native.saved[key][1])
+                li:set_field("IsSelectable", Native.saved[key][2])
+            end
+        end)
+    end
+    if not on then Native.saved = nil end
+end
+local function native_decide(cmd)
+    if Native.decided then return end
+    local take = cmd == CMD.TAKE or cmd == CMD.ARISEN or cmd == CMD.PAWN
+    local act
+    if temper_mode() then
+        act = take and "t_take" or (cmd == CMD.SELL) and "ts_again" or "t_keep"
+    else
+        act = take and "n_take" or (cmd == CMD.SELL) and (Pick.studio and "s_again" or "n_again") or "n_keep"
+    end
+    Pick.after = nil
+    Native.decided = act
+    Menu.pending = { act = act }
+    Native.close = true
+    mlog("native reveal: command " .. tostring(cmd) .. " -> " .. act)
+end
+
+-- The screen's bottom "Receive Selected" button is hidden and inert during a
+-- reveal: the item's own action menu is the one way to decide.
+local function native_exec_button(ui, visible)
+    pcall(function() ui:get_field("ActionListPanel"):get_field("PnlRoot"):call("set_ForceInvisible", not visible) end)
+end
+sdk.hook(UI_T:get_method("onDecideExitBtn()"), function(args)
+    if Native.active then return sdk.PreHookResult.SKIP_ORIGINAL end
+end, function(r) return r end)
+
+-- Feed the roll in / leave once decided — inside the screen's own update.
+local TITLE_EMPTY_ID = ValueType.new(sdk.find_type_definition("System.Guid"))
+local title_ui = nil
+sdk.hook(UI_T:get_method("update()"), function(args)
+    title_ui = nil
+    if not (Native.route or Native.close or Native.active) then return end
+    title_ui = sdk.to_managed_object(args[2])
+    local ok, err = pcall(function()
+        local ui = sdk.to_managed_object(args[2])
+        local f = ui:get_field("CurrFlowId")
+        -- Decided from the item's own menu: the menu then heads for its
+        -- quantity step (and from there a "can't add" notice) for the result we
+        -- already removed. Steer it to the screen's "anything left?" step instead.
+        if Native.active then native_exec_button(ui, false) end   -- the screen re-shows it each frame
+        local nx = ui:get_field("NextFlowId")
+        -- however it is reached (button, key, mouse, back), the screen's
+        -- "what to do with the selected items?" dialog never opens on a reveal
+        if Native.active and not Native.close and nx == FLOW_ALLITEMS then
+            ui:set_field("NextFlowId", 0)
+            return
+        end
+        if Native.close and (f == FLOW_NUMINPUT or f == FLOW_RESERVEFAIL
+                             or nx == FLOW_NUMINPUT or nx == FLOW_RESERVEFAIL) then
+            ui:set_field("NextFlowId", FLOW_CHECKEND)
+            return
+        end
+        if f ~= FLOW_ORDER then return end
+        if Native.route then
+            if Native.abort or (not Native.ready and os.clock() - Native.t0 > 5) then
+                Native.route, Native.close = false, true          -- payment failed: just leave
+            elseif Native.ready and ((temper_mode() and T.item and T.rolled ~= nil) or (not temper_mode() and flow.after and flow.item)) then
+                Native.route = false
+                local item = temper_mode() and T.item or flow.item
+                local list = iam():call("get_ResultDatasList")
+                local m = find_master(item)
+                if not m or not list or list:call("get_Count") ~= 0 then Native.close = true; return end
+                Native.old_vt = m:get_field("_Param")                  -- a copy: the CURRENT perks
+                local ab = Native.old_vt:get_field("_Ability")
+                if temper_mode() then
+                    ab:set_field("Bonus", Core.temper_bonus(T.cur, T.rolled))   -- same perks, the new element
+                    GUIDE.reveal = true
+                else
+                    for i = 1, 4 do ab:set_field("Slot" .. i, flow.after[i] or 0) end
+                    ab:set_field("Bonus", flow.after.bonus or 0)
+                end
+                local ri = sdk.create_instance("app.ItemAppraisalManager.ResultItemInfo"):add_ref()
+                ri:set_field("ItemId", item.item_id)
+                ri:set_field("ItemCount", 1)
+                ri:set_field("Ability", ab)
+                Native.ri = ri
+                list:call("Add", ri)
+                native_relabel(ui, true)
+                native_exec_button(ui, false)
+                Native.active, Native.close, Native.decided = true, false, nil
+                Native.ui = ui:add_ref()
+                ui:call("successAppraisalAction()")
+                mlog("native reveal: shown " .. item.name)
+                Native.guide_logged = false
+                return
+            end
+        end
+        if Native.close then                 -- result cleared
+            if Pick.studio then
+                -- on the Relic ReRoll screen: wait for the decision to be applied,
+                -- then back to the relic grid (Roll again re-enters above)
+                if Pick.after ~= "grid" then return end
+                Native.close, Pick.after, GUIDE.reveal = false, nil, false
+                Native.active, Native.old_vt, Native.ri, Native.ui = false, nil, nil, nil
+                Pick.route, Pick.t0 = true, os.clock()   -- refill: perks and names changed
+                return
+            end
+            Native.close = false
+            if Native.active then native_relabel(ui, false); native_exec_button(ui, true) end
+            Native.active, Native.old_vt, Native.ri, Native.ui = false, nil, nil, nil
+            ui:set_field("NextFlowId", FLOW_FADEOUT)   -- the screen's own exit, as pressing back here does
+        end
+    end)
+    if not ok then
+        mlog("native reveal error: " .. tostring(err))
+        Native.route, Native.close = false, false
+    end
+end, function(r)
+    -- The screen re-titles itself every frame; after its update, call it ours.
+    if title_ui and (Native.route or Native.active or Pick.studio) and CONFIG.native_title then
+        pcall(function()
+            local tx = title_ui:get_field("TitleBoard"):get_field("TxtName")
+            tx:call("set_MessageId", TITLE_EMPTY_ID)
+            tx:call("set_Message", screen_title())
+        end)
+    end
+    return r
+end)
+
+---------------------------------------------------------------------------
+-- THE RELIC REROLL SCREEN (Jiera). "Reforge Relic" opens her appraisal screen
+-- (remapped to her own "Appraise" row) and the whole reforge lives in it:
+--   grid    your carried, unequipped Lv5 relics in place of spoils; Special
+--           Skills shows the highlighted relic's perks
+--   confirm a relic       -> it is chosen and its perk list takes the cursor:
+--                            confirm a perk to bind / unbind it, back = grid
+--   confirm it again      -> the screen's own number popup becomes the boost
+--                            tier with the total cost; confirming pays and
+--                            rolls, and the reveal plays on this screen
+--   reveal: Take / Keep   -> back to the grid (refreshed)
+--           Roll again    -> pays the next tier, next reveal here, binds kept
+-- Everything happens inside the screen's own update; nothing is displayed or
+-- opened from script.
+---------------------------------------------------------------------------
+local GI_T = "app.ui042001.StorageAppraisalItemPanel.GridInfo"
+local GL_T = "System.Collections.Generic.List`1<app.ui042001.StorageAppraisalItemPanel.GridInfo>"
+local FLOW_EXEC, FLOW_APPCONFIRM, FLOW_NUMORDER, FLOW_SLOTLIST = 9, 10, 14, 17
+
+local function pick_say(text) Pick.msg, Pick.msg_t = text, os.clock() end
+
+local function pick_chrome(ui, hidden)
+    for _, f in ipairs({ "ActionListPanel", "AppraisalExecBtn", "UnitPrice", "OrderListPanel" }) do
+        pcall(function() ui:get_field(f):get_field("PnlRoot"):call("set_ForceInvisible", hidden) end)
+    end
+end
+local function pick_fill(ui)
+    local items = {}
+    local src = temper_mode() and Game.list_weapons(Origins.map) or Game.list_relic_items(Origins.map)
+    for _, it in ipairs(src) do
+        -- the Arisen's own bag only: nothing equipped, nothing in storage
+        if not it.equipped and it.owner ~= ID.box then items[#items + 1] = it end
+    end
+    Pick.items, Pick.shown_sid, Pick.bonus = {}, nil, {}
+    if #items == 0 then return 0 end
+    local list = sdk.create_instance(GL_T):add_ref()
+    list:call(".ctor")
+    for i, it in ipairs(items) do
+        local g = sdk.create_instance(GI_T):add_ref()
+        g:call(".ctor")
+        g:set_field("_Storage", it.master:get_field("_Param"))
+        g:call("set_SortNo", i - 1)
+        g:call("set_InitCount", 1)
+        list:call("Add", g)
+        Pick.items[it.storage_id] = it
+        local _, _, b = read_slots(it.master:get_field("_Param"))
+        Pick.bonus[it.storage_id] = b
+    end
+    local sp = ui:get_field("StoragePanel")
+    local gc = sp:get_field("GridCtrl")
+    gc:call("makeList(System.Collections.Generic.List`1<app.ui042001.StorageAppraisalItemPanel.GridInfo>, System.Int32, System.Boolean)", list, 0, true)
+    pcall(gc.call, gc, "makeListSub(System.Int32, System.Boolean)", #items, true)
+    pcall(sp.call, sp, "updateDisp()")
+    return #items
+end
+local function pick_selected(ui, info)
+    info = info or ui:get_field("StoragePanel"):call("get_SelectedInfo")
+    local sid = info and info:get_field("_Storage"):get_field("_StorageId")
+    return sid and Pick.items and Pick.items[sid]
+end
+local function chosen_is(item)
+    return item ~= nil and flow.item ~= nil and flow.item.uid == item.uid and flow.state == S.LOCKS
+end
+-- The game's own "Special Skills" panel, showing the highlighted relic's
+-- current perks (refreshed when the highlight moves).
+local function pick_perks(ui)
+    local info = ui:get_field("StoragePanel"):call("get_SelectedInfo")
+    local sid = info and info:get_field("_Storage"):get_field("_StorageId")
+    if Pick.slots_on then ui:get_field("SlotInfoListPanel"):call("set_Visible", true) end
+    if not sid or sid == Pick.shown_sid then return end
+    Pick.shown_sid = sid
+    local cw = ui:get_field("SlotInfoListPanel")
+    cw:set_field("_EnableBeforeList", true)
+    cw:set_field("_EnableAfterList", false)
+    local sd = info:get_field("_Storage")
+    cw:call("setup(app.ItemDefine.StorageData, app.ItemDefine.StorageData)", sd, sd)
+    -- one list, not a before/after pair: hide the lower list and its arrow
+    local c = cw:get_field("PnlRoot"):call("get_Child")
+    while c do
+        local nm = c:call("get_Name")
+        if nm == "PNL_ExAfter" or nm == "PNL_RArrow_01S" then c:call("set_ForceInvisible", true) end
+        c = c:call("get_Next")
+    end
+    if not Pick.slots_on then
+        Pick.slots_on = true
+        ui:call("switchSlotViewVisible(System.Boolean)", true)
+    end
+    cw:call("set_Visible", true)
+end
+-- Hide the grid's multi-select check boxes (one relic at a time here).
+local function pick_hide_checks(ui)
+    local gc = ui:get_field("StoragePanel"):get_field("GridCtrl")
+    local items = gc:get_field("ItemList")
+    for _, gi in ipairs(items and items:get_elements() or {}) do
+        local root = gi:get_field("PNL_item")
+        local c = root and root:call("get_Child")
+        while c do
+            if c:call("get_Name") == "PNL_Check" then c:call("set_ForceInvisible", true); break end
+            c = c:call("get_Next")
+        end
+    end
+end
+-- Choose a relic for reforging (binds start empty; inherent ones pre-bound).
+local function studio_choose(item)
+    if not item then return false end
+    if flow.state ~= S.IDLE then flow:cancel() end
+    flow:open()
+    local ok, err = flow:choose_item(item)
+    if not ok then
+        if flow.state ~= S.IDLE then flow:cancel() end
+        pick_say(tostring(err))
+        return false
+    end
+    Pick.odds_key = nil
+    mlog("relic screen: chose " .. item.name)
+    return true
+end
+-- Weapon Temper: the popup's number picks the Morbid Glare tier (0 = tier 1);
+-- it only goes as high as the tiers you can pay for.
+local function temper_max_tier()
+    local have = Game.count_item(CONFIG.hal_temper.cost_item)
+    local mx = 0
+    for i, tier in ipairs(CONFIG.hal_temper.tiers or {}) do
+        if have >= temper_cost(tier) then mx = i end
+    end
+    return mx
+end
+local TEMPER_ODDS = { [0.5] = "Element: 50%", [1.0] = "Element: guaranteed" }
+local function temper_tier_title(i)
+    local tier = (CONFIG.hal_temper.tiers or {})[i]
+    if not tier then return "" end
+    if not tier.element_chance then return "Element: usual odds" end
+    return TEMPER_ODDS[tier.element_chance] or ("Element: " .. math.floor(tier.element_chance * 100 + 0.5) .. "%")
+end
+local function temper_confirm(ui, item)
+    if not item then ui:set_field("NextFlowId", 0); return end
+    local mx = temper_max_tier()
+    if mx == 0 then
+        local need = temper_cost((CONFIG.hal_temper.tiers or {})[1] or { cost = 1 })
+        pick_say("Need " .. need .. " " .. item_name_by_id(CONFIG.hal_temper.cost_item))
+        ui:set_field("NextFlowId", 0)
+        return
+    end
+    T.item, T.rolled = item, nil
+    T.cur = (Pick.bonus and Pick.bonus[item.storage_id]) or Game.get_bonus(item) or 0
+    Pick.temper_max = mx
+    Pick.mode, Pick.boost_set = "boost", false
+    mlog("weapon screen: chose " .. item.name .. " (" .. Core.elem_name(T.cur) .. ")")
+    ui:set_field("NextFlowId", FLOW_NUMORDER)
+end
+local function boost_max()
+    if temper_mode() then return math.max((Pick.temper_max or 1) - 1, 0) end
+    local jb = CONFIG.jiera_boost
+    if not (jb and jb.enabled and jb.tiers) then return 0 end
+    if Menu.special_p == 0 then return 0 end
+    return #jb.tiers
+end
+local function boost_text(n)
+    local q = flow:price()
+    local jb = CONFIG.jiera_boost
+    local t = n and n > 0 and jb and jb.tiers and jb.tiers[n]
+    local w = q.wyrmslife + ((t and not CONFIG.free_mode) and t.wyrmslife or 0)
+    local s = w .. " WLC" .. (q.ore > 0 and (", " .. q.ore .. " Brinebeast Ore") or "")
+    if t then s = s .. string.format("  (%d%% ^/III)", math.floor(t.chance * 100 + 0.5)) end
+    return s
+end
+
+local function studio_boost_odds()
+    local key = flow.item.uid .. ":" .. tostring(flow.locks[1]) .. tostring(flow.locks[2]) .. tostring(flow.locks[3]) .. tostring(flow.locks[4])
+    if Pick.odds_key ~= key then
+        Pick.odds_key = key
+        Menu.special_p = Game.special_odds(flow.item, flow.before, flow.locks)
+    end
+end
+-- A relic confirmed on the grid (Cross / F / click, or R3 / V): choose it and
+-- go to its perks; confirmed again once chosen: the reforge popup.
+-- Confirm on a relic: the reforge popup (boost tier + total), keeping any
+-- binds already made on it. R3 / V on a relic: its perks, to bind.
+local function studio_confirm(ui, item)
+    if temper_mode() then return temper_confirm(ui, item) end
+    if not chosen_is(item) and not studio_choose(item) then ui:set_field("NextFlowId", 0); return end
+    studio_boost_odds()
+    Pick.mode, Pick.boost_set = "boost", false
+    ui:set_field("NextFlowId", FLOW_NUMORDER)
+end
+local function studio_bind(ui, item)
+    if not chosen_is(item) and not studio_choose(item) then ui:set_field("NextFlowId", 0); return end
+    Pick.slot_cancel, Pick.slot_frames, Pick.decide = false, 0, false
+    Pick.mode = "bind"
+    ui:set_field("NextFlowId", FLOW_SLOTLIST)
+end
+
+local pick_ui = nil
+local function pick_flow_hook(args)
+    pick_ui = nil
+    if not (Pick.route or Pick.active or Pick.studio) then return end
+    local ok, err = pcall(function()
+        local ui = sdk.to_managed_object(args[2])
+        pick_ui = ui
+        local f, nx = ui:get_field("CurrFlowId"), ui:get_field("NextFlowId")
+        if Pick.route then
+            if f == FLOW_ORDER then
+                Pick.route = false
+                local n = pick_fill(ui)
+                if n == 0 then
+                    if not Pick.studio then
+                        Menu.note = temper_mode() and "Carry an unequipped weapon to temper it."
+                                                   or "Carry an unequipped level 5 relic to reforge it."
+                    end
+                    Pick.studio = false
+                    ui:set_field("NextFlowId", FLOW_FADEOUT)
+                    return
+                end
+                Pick.active, Pick.slots_on, Pick.studio, Pick.mode = true, false, true, "grid"
+                pick_chrome(ui, true)
+                pcall(guide_find)
+                mlog("relic screen: " .. n .. (temper_mode() and " weapons" or " relics") .. " listed")
+            elseif os.clock() - Pick.t0 > 6 and not Pick.studio then
+                Pick.route = false
+            end
+            return
+        end
+        if not Pick.active then return end
+        Pick.frame = (Pick.frame or 0) + 1
+        pick_chrome(ui, true)                          -- the screen re-shows them
+        pick_perks(ui)
+        if Pick.frame % 10 == 1 then pick_hide_checks(ui) end
+        local okk, kd = pcall(function() return reframework:is_key_down(CONFIG.inspect_key) end)
+        local okg, gd = pcall(ui.call, ui, "isMapMarker")   -- the game's binding for that action (follows rebinds)
+        local down = (okg and gd == true) or (okk and kd) or ((pad_buttons() & CONFIG.pad_inspect_button) ~= 0)
+        local edge = down and not Pick.inspect_was
+        Pick.inspect_was = down
+
+        -- On the perk list: confirm binds, back / V / R3 returns to the grid.
+        if f == FLOW_SLOTLIST then
+            Pick.slot_frames = (Pick.slot_frames or 0) + 1
+            local leaving = nx ~= 0 and nx ~= FLOW_SLOTLIST and nx ~= FLOW_ORDER
+            if Pick.decide then
+                Pick.decide = false
+                local info = ui:get_field("SlotInfoListPanel"):call("get_SelectedInfo")
+                local aid = info and info:call("get_AbilityId")
+                if aid and flow.state == S.LOCKS then
+                    for s, pid in ipairs(flow.before) do
+                        if pid == aid then
+                            local okl, errl = flow:toggle_lock(s)
+                            if not okl then pick_say(tostring(errl)) end
+                            break
+                        end
+                    end
+                end
+            end
+            if edge or Pick.slot_cancel then              -- back / R3 / V: to the relics
+                Pick.slot_cancel = false
+                ui:set_field("NextFlowId", FLOW_ORDER)
+            elseif leaving and Pick.slot_frames <= 3 then
+                ui:set_field("NextFlowId", 0)            -- the step's reflex bail on entry
+            elseif leaving then
+                ui:set_field("NextFlowId", FLOW_ORDER)   -- the player's back / cancel
+            end
+            return
+        end
+        if f == FLOW_ORDER and Pick.mode ~= "boost" then Pick.mode = "grid" end
+        if f == FLOW_ORDER and Pick.mode == "boost" and nx == 0 and Pick.boost_set then
+            Pick.mode = "grid"                         -- popup closed (cancelled)
+        end
+
+        if edge and f == FLOW_ORDER and nx == 0 and not temper_mode() then   -- R3 / V on a relic: its perks
+            studio_bind(ui, pick_selected(ui))
+            return
+        end
+        if nx == FLOW_NUMORDER and f == FLOW_ORDER and Pick.mode == "grid" then   -- (stack route)
+            studio_confirm(ui, pick_selected(ui))
+            return
+        end
+        if f == FLOW_NUMORDER and Pick.mode == "boost" and not Pick.boost_set then
+            Pick.boost_set = true
+            local wrap = ui:get_field("NumInputWindow")
+            local nw = wrap:get_field("NumInputWindow")
+            local mx = boost_max()
+            -- entered by us (single relics never ask "How many?"), so bring the
+            -- popup up the way the grid's own confirm does
+            local a1 = pcall(wrap.call, wrap, "setActive(app.ui042001.NumInput.DispType)", 0)
+            local a2 = pcall(nw.call, nw, "setNum(System.Int32, System.Int32, System.Int32)", 0, 0, mx)
+            local a3 = pcall(nw.call, nw, "setRange(System.Int32, System.Int32)", 0, mx)
+            local a4 = pcall(nw.call, nw, "setFocus(System.Boolean)", true)
+            pcall(function() wrap:get_field("PnlRoot"):call("set_Visible", true) end)
+            mlog(string.format("relic screen: reforge popup, boost 0-%d (active %s num %s range %s focus %s, now %s)",
+                mx, tostring(a1), tostring(a2), tostring(a3), tostring(a4), tostring(nw:call("getNum"))))
+        end
+        if nx == FLOW_EXEC or nx == FLOW_APPCONFIRM then
+            ui:set_field("NextFlowId", 0)              -- never appraise in this mode
+        end
+    end)
+    if not ok then mlog("relic screen error: " .. tostring(err)); Pick.route, Pick.active, Pick.studio = false, false, false end
+end
+
+-- Flow hints on the game's key-guide strip (a separate HUD, ui011601): its two
+-- text lines are rewritten as plain text after the HUD's own late update each
+-- frame while the relic grid is up (the <BTN ...> tags still draw as button
+-- icons). Nothing is handed to the HUD and none of its calls are altered.
+guide_find = function()
+    GUIDE.keys, GUIDE.explain = nil, nil
+    local scene = sdk.call_native_func(sdk.get_native_singleton("via.SceneManager"), sdk.find_type_definition("via.SceneManager"), "get_CurrentScene")
+    local comps = scene and scene:call("findComponents(System.Type)", sdk.typeof("app.ui011601"))
+    local kg = comps and comps:get_elements()[1]
+    local gui = kg and kg:call("get_GameObject"):call("getComponent(System.Type)", sdk.typeof("via.gui.GUI"))
+    local function child(c, name)
+        c = c and c:call("get_Child")
+        while c do if c:call("get_Name") == name then return c end c = c:call("get_Next") end
+    end
+    local key = gui and child(child(child(gui:call("get_View"), "PNL_Main"), "PNL_Keyguide"), "PNL_Key")
+    if key then GUIDE.keys, GUIDE.explain = child(key, "txt_keyguide"), child(key, "txt_explain") end
+    mlog("relic screen: key guide " .. (GUIDE.keys and "found" or "NOT found"))
+end
+guide_hide = function(hidden) end
+guide_set = function(keys, explain) GUIDE.want_keys, GUIDE.want_exp = table.concat(keys, " "), explain end
+do
+    local KG = sdk.find_type_definition("app.ui011601")
+    local m = KG and KG:get_method("lateUpdate()")
+    if m then
+        sdk.hook(m, function(args) end, function(r)
+            if GUIDE.reveal and Native.active and GUIDE.explain and T.item and T.rolled ~= nil then
+                pcall(function()
+                    local nb = Core.temper_bonus(T.cur, T.rolled)
+                    local note = ((T.rolled & Core.ELEM_MASK) ~= 0 and (T.cur & ~Core.ELEM_MASK) ~= 0)
+                                 and "   (replaces its current bonus)" or ""
+                    GUIDE.explain:call("set_MessageId", TITLE_EMPTY_ID)
+                    GUIDE.explain:call("set_Message", "Element:  " .. Core.elem_name(T.cur) .. "  >  " .. Core.elem_name(nb) .. note)
+                end)
+            elseif Pick.active and GUIDE.keys and GUIDE.want_keys then
+                pcall(function()
+                    GUIDE.keys:call("set_MessageId", TITLE_EMPTY_ID)
+                    GUIDE.keys:call("set_Message", GUIDE.want_keys)
+                    GUIDE.explain:call("set_MessageId", TITLE_EMPTY_ID)
+                    GUIDE.explain:call("set_Message", GUIDE.want_exp)
+                end)
+            end
+            return r
+        end)
+    end
+end
+local function pick_set(ui, panel_field, child, text)
+    local c = ui:get_field(panel_field):get_field("PnlRoot"):call("get_Child")
+    while c do
+        if c:call("get_Name") == child then
+            c:call("set_MessageId", TITLE_EMPTY_ID)
+            c:call("set_Message", text)
+            return
+        end
+        c = c:call("get_Next")
+    end
+end
+local function pick_draw_hook(r)
+    if not (pick_ui and (Pick.route or Pick.active or Pick.studio)) then return r end
+    local okd, errd = pcall(function()
+        local ui = pick_ui
+        local tb = ui:get_field("TitleBoard")
+        local tx = tb:get_field("TxtName")
+        tx:call("set_MessageId", TITLE_EMPTY_ID)
+        tx:call("set_Message", screen_title())
+        if not Pick.active then return end
+        local it = pick_selected(ui)
+        if temper_mode() then
+            local fnow = ui:get_field("CurrFlowId")
+            if Pick.msg and os.clock() - (Pick.msg_t or 0) < 3.5 then
+                pick_set(ui, "OrderItemCount", "txt_TitleTotalNum", Pick.msg)
+                pick_set(ui, "OrderItemCount", "txt_TotalNum", "")
+            else
+                pick_set(ui, "OrderItemCount", "txt_TitleTotalNum", "Element")
+                pick_set(ui, "OrderItemCount", "txt_TotalNum", it and Core.elem_name(Pick.bonus[it.storage_id] or 0) or "")
+            end
+            if not Pick.glare_t or os.clock() - Pick.glare_t > 0.5 then
+                Pick.glare_t, Pick.glare = os.clock(), Game.count_item(CONFIG.hal_temper.cost_item)
+            end
+            pick_set(ui, "Price", "txt_TitleTotal", item_name_by_id(CONFIG.hal_temper.cost_item))
+            pick_set(ui, "Price", "txt_TitleMoney", Pick.glare .. " owned")
+            if Pick.mode == "boost" and fnow == FLOW_NUMORDER then
+                guide_set({ "<BTN Decide>Temper", "<BTN BackCancel>Back" },
+                          "Pay more " .. item_name_by_id(CONFIG.hal_temper.cost_item) .. " for better odds of an element.")
+                pcall(function() ui:get_field("NumInputWindow"):get_field("PnlRoot"):call("set_Visible", true) end)
+                local nw = ui:get_field("NumInputWindow"):get_field("NumInputWindow")
+                local i = (nw:call("getNum") or 0) + 1
+                local tier = (CONFIG.hal_temper.tiers or {})[i] or { cost = 1 }
+                nw:call("setTitle(System.String)", temper_tier_title(i))
+                nw:call("setMoneyTitle(System.String)", "Total")
+                nw:call("setMoney(System.String)", glare_text(temper_cost(tier)))
+            elseif fnow == FLOW_ORDER then
+                guide_set({ "<BTN Decide>Temper", "<BTN BackCancel>Cancel" },
+                          "Temper a weapon to reroll its element.")
+            end
+            return
+        end
+        local chosen = chosen_is(it)
+        -- the two rows: browsing -> history and price; chosen -> binds and cost
+        if Pick.msg and os.clock() - (Pick.msg_t or 0) < 3.5 then
+            pick_set(ui, "OrderItemCount", "txt_TitleTotalNum", Pick.msg)
+            pick_set(ui, "OrderItemCount", "txt_TotalNum", "")
+        elseif chosen then
+            local binds = count_keys(flow.locks)
+            pick_set(ui, "OrderItemCount", "txt_TitleTotalNum", "Binds")
+            pick_set(ui, "OrderItemCount", "txt_TotalNum", binds .. " of " .. CONFIG.max_locks)
+        else
+            local n = it and (flow.d.slot.counts[it.uid] or 0) or 0
+            pick_set(ui, "OrderItemCount", "txt_TitleTotalNum", "Reforged")
+            pick_set(ui, "OrderItemCount", "txt_TotalNum", n == 1 and "1 time" or (n .. " times"))
+        end
+        if chosen then
+            pick_set(ui, "Price", "txt_TitleTotal", "Reforge")
+            pick_set(ui, "Price", "txt_TitleMoney", boost_text(0))
+        else
+            local n = it and (flow.d.slot.counts[it.uid] or 0) or 0
+            pick_set(ui, "Price", "txt_TitleTotal", "Next reroll")
+            pick_set(ui, "Price", "txt_TitleMoney", Core.reroll_cost(n) .. " WLC")
+        end
+        -- bound perks wear a tag on the Special Skills list
+        if chosen and Pick.shown_sid == it.storage_id then
+            local cw = ui:get_field("SlotInfoListPanel")
+            local lc = cw:get_field("BeforeSlotListCtrl")
+            list_each(lc:get_field("InfoList"), function(info)
+                local aid = info:call("get_AbilityId")
+                local s
+                for k, pid in ipairs(flow.before) do if pid == aid then s = k end end
+                if not s then return end
+                local item = lc:call("getItem(app.GUIBase.EquipmentAbilityCompareWindowRef.SlotListInfo)", info)
+                local t = item and item:get_field("TxtCommon")
+                if not t then return end
+                local tag = (flow.innate and flow.innate[s]) and "[Inherent]  " or (flow.locks[s] and "[Bound]  " or "")
+                t:call("set_MessageId", TITLE_EMPTY_ID)
+                t:call("set_Message", tag .. perk_name(aid))
+            end)
+        end
+        local fnow = ui:get_field("CurrFlowId")
+        local insp = CONFIG.inspect_guide_tag and ("<BTN " .. CONFIG.inspect_guide_tag .. ">Bind perks") or "R3 / V  Bind perks"
+        if Pick.mode == "bind" and fnow == FLOW_SLOTLIST then
+            guide_set({ "<BTN Decide>Bind / Unbind", "<BTN BackCancel>Back" },
+                      "Bind up to " .. CONFIG.max_locks .. " perks: bound perks are kept through the reforge.")
+        elseif Pick.mode == "boost" and fnow == FLOW_NUMORDER then
+            guide_set({ "<BTN Decide>Reforge", "<BTN BackCancel>Back" },
+                      boost_max() > 0 and "Raise the boost for better odds of a ^ or tier III perk."
+                                       or "This relic can't roll a ^ or tier III perk, so there is no boost.")
+        elseif fnow == FLOW_ORDER then
+            guide_set({ "<BTN Decide>Reforge", insp, "<BTN BackCancel>Cancel" },
+                      "Bind perks to keep them, then reforge the relic.")
+        end
+        -- the boost / reforge popup
+        if Pick.mode == "boost" and fnow == FLOW_NUMORDER then
+            pcall(function() ui:get_field("NumInputWindow"):get_field("PnlRoot"):call("set_Visible", true) end)
+            local nw = ui:get_field("NumInputWindow"):get_field("NumInputWindow")
+            local n = nw:call("getNum") or 0
+            local jb = CONFIG.jiera_boost
+            local t = n > 0 and jb and jb.tiers and jb.tiers[n]
+            nw:call("setTitle(System.String)", t and string.format("Boost: %d%% ^ / III", math.floor(t.chance * 100 + 0.5)) or "Boost: none")
+            nw:call("setMoneyTitle(System.String)", "Total")
+            local q = flow:price()
+            nw:call("setMoney(System.String)", (q.wyrmslife + ((t and not CONFIG.free_mode) and t.wyrmslife or 0)) .. " WLC")
+        end
+    end)
+    if not okd and not Pick.draw_err then Pick.draw_err = true; mlog("relic screen draw error: " .. tostring(errd)) end
+    return r
+end
+sdk.hook(UI_T:get_method("update()"), pick_flow_hook, pick_draw_hook)
+
+do  -- (diagnostic) how the screen sizes the popup, to match its argument order
+    local nt = sdk.find_type_definition("app.GUIBase.NumInputWindowRef")
+    local m = nt and nt:get_method("setNum(System.Int32, System.Int32, System.Int32)")
+    if m then
+        sdk.hook(m, function(args)
+            if Pick.active and Pick.mode == "boost" and not Pick.setnum_logged then
+                Pick.setnum_logged = true
+                mlog(string.format("relic screen: popup setNum(%d, %d, %d)", sdk.to_int64(args[3]) & 0xFFFFFFFF,
+                    sdk.to_int64(args[4]) & 0xFFFFFFFF, sdk.to_int64(args[5]) & 0xFFFFFFFF))
+            end
+        end, function(r) return r end)
+    end
+end
+
+-- On the perk list the cursor stays on the one visible list...
+sdk.hook(CW_T:get_method("updateInput(app.GUIBase.EquipmentAbilityCompareWindowRef.ControlTarget)"), function(args)
+    if Pick.active then args[3] = sdk.to_ptr(1) end   -- ControlTarget.Before
+end, function(r) return r end)
+-- ...its confirm binds (the list reports Decide; the game itself ignores it)...
+do
+    local base = CW_T:get_field("BeforeSlotListCtrl"):get_type():get_parent_type()
+    local m = base and base:get_method("updateInput(app.GUIBase.InputEvent, System.Int32)")
+    if m then
+        local this_ctrl
+        sdk.hook(m, function(args)
+            this_ctrl = nil
+            if Pick.active and Pick.mode == "bind" then this_ctrl = sdk.to_managed_object(args[2]) end
+        end, function(r)
+            if this_ctrl and pick_ui and (sdk.to_int64(r) & 0xFF) == 1 then
+                local okc, before = pcall(function() return pick_ui:get_field("SlotInfoListPanel"):get_field("BeforeSlotListCtrl") end)
+                if okc and before and before:get_address() == this_ctrl:get_address() then Pick.decide = true end
+            end
+            this_ctrl = nil
+            return r
+        end)
+    end
+end
+-- ...and the game's own back on the list returns to the grid.
+sdk.hook(UI_T:get_method("canceledSlotList()"), function(args)
+    if Pick.active then Pick.slot_cancel = true end
+end, function(r) return r end)
+-- The skill-list step normally only runs over an appraisal result.
+local SLOTLIST_OK = UI_T:get_method("isEnableSlotListInput()")
+if SLOTLIST_OK then
+    sdk.hook(SLOTLIST_OK, function(args) end, function(r)
+        if Pick.active then return sdk.to_ptr(1) end
+        return r
+    end)
+end
+
+-- The popup's confirm would add the relic to the appraisal order: instead it
+-- is the reforge, with the popup's number as the boost tier.
+for _, sig in ipairs({ "applyItemSet(app.ui042001.StorageAppraisalItemPanel.GridInfo, System.Int32)", "applyItemSet(System.Int32)" }) do
+    local m = UI_T:get_method(sig)
+    if m then
+        sdk.hook(m, function(args)
+            if not Pick.active then return end
+            pcall(function()
+                local ui = sdk.to_managed_object(args[2])
+                local n = 0
+                if sig:find("GridInfo") then n = sdk.to_int64(args[4]) & 0xFFFFFFFF
+                else
+                    local nw = ui:get_field("NumInputWindow"):get_field("NumInputWindow")
+                    n = nw:call("getNum") or 0
+                end
+                if Pick.apply_frame == Pick.frame then return end   -- one per frame (select-all etc.)
+                Pick.apply_frame = Pick.frame
+                if Pick.mode == "boost" and temper_mode() and T.item then
+                    Menu.pending = { act = "ts_roll", tier = n + 1 }
+                    mlog("weapon screen: temper, tier " .. tostring(n + 1))
+                    Pick.mode = "grid"
+                    ui:set_field("NextFlowId", FLOW_ORDER)
+                elseif Pick.mode == "boost" and flow.state == S.LOCKS then
+                    Menu.pending = { act = "s_roll", boost = (n > 0) and n or nil }
+                    mlog("relic screen: reforge, boost tier " .. tostring(n))
+                    Pick.mode = "grid"
+                    ui:set_field("NextFlowId", FLOW_ORDER)
+                else
+                    -- a single relic confirmed on the grid goes straight here
+                    local info = sig:find("GridInfo") and sdk.to_managed_object(args[3]) or nil
+                    studio_confirm(ui, pick_selected(ui, info))
+                end
+            end)
+            return sdk.PreHookResult.SKIP_ORIGINAL
+        end, function(r) return r end)
+    end
+end
+
+-- The before/after perk window compares against the relic's current perks
+-- (normally it would compare against what the character has equipped).
+sdk.hook(CW_T:get_method("setup(app.ItemDefine.StorageData, app.ItemDefine.StorageData)"), function(args)
+    if Native.active and Native.old_vt then
+        pcall(function() args[3] = sdk.to_ptr(Native.old_vt:address()) end)
+    end
+end, function(r) return r end)
+
+-- Clear the (single) result from the screen ourselves and hand the screen to
+-- its own "anything left?" step, which fades the results out and returns to
+-- the spoil list, where the update hook above leaves. Nothing is created,
+-- sold or equipped, and no storage/weight check can interrupt it.
+local function native_finish(ui)
+    local res = ui:get_field("Result")
+    local slots = res and res:call("getResultSlotList")
+    for _, slot in ipairs(slots and slots:get_elements() or {}) do
+        res:call("subStack(System.Int32, System.Int32)", slot:call("get_Key"), 1)
+    end
+    ui:get_field("AppraisalItemGridPanel"):call("setAppraisalItemInfo(app.GUIAppraisalResultData)", res)
+    ui:set_field("NextFlowId", FLOW_CHECKEND)
+end
+
+-- Acting on the result: the item's own action menu (onSelectPullDownAction,
+-- which would otherwise go on to a quantity/space check for the item we never
+-- hand out) and the "Receive Selected" dialog (executeCommand). Both are
+-- answered ourselves.
+local function native_answer(args)
+    if not Native.active then return end
+    local cmd = sdk.to_int64(args[3]) & 0xFFFFFFFF
+    if cmd == CMD.CANCEL or cmd == CMD.FAV then return end
+    native_decide(cmd)
+    local ok, err = pcall(native_finish, sdk.to_managed_object(args[2]))
+    if not ok then mlog("native finish error: " .. tostring(err)) end
+    return sdk.PreHookResult.SKIP_ORIGINAL
+end
+sdk.hook(UI_T:get_method("onSelectPullDownAction(app.ui042001.ResultItemCommand)"), native_answer, function(r) return r end)
+sdk.hook(UI_T:get_method("executeCommand(app.ui042001.ResultItemCommand, System.Boolean, System.Int32)"), native_answer, function(r) return r end)
+
+-- Backstop: should anything still try to hand the result out, create nothing.
+sdk.hook(UI_T:get_method("reserveItem(app.GUIAppraisalResultData.ResultSlot, app.CharacterID, System.Int32)"), function(args)
+    if not Native.active then return end
+    pcall(function()
+        local ui = sdk.to_managed_object(args[2])
+        local slot = sdk.to_managed_object(args[3])
+        ui:get_field("Result"):call("subStack(System.Int32, System.Int32)", slot:call("get_Key"), 1)
+    end)
+    if not Native.decided then native_decide(CMD.STORE) end
+    return sdk.PreHookResult.SKIP_ORIGINAL
+end, function(r) return r end)
+
+-- Scripts reset (or the mod unloads) with a reveal on screen: without these
+-- hooks the screen would treat the shown roll as a real appraisal result and
+-- hand it out as a NEW item. Take it off the screen first.
+re.on_script_reset(function()
+    if not (Native.active and Native.ui) then return end
+    pcall(function()
+        local res = Native.ui:get_field("Result")
+        local slots = res and res:call("getResultSlotList")
+        for _, slot in ipairs(slots and slots:get_elements() or {}) do
+            res:call("subStack(System.Int32, System.Int32)", slot:call("get_Key"), 1)
+        end
+        Native.ui:get_field("AppraisalItemGridPanel"):call("setAppraisalItemInfo(app.GUIAppraisalResultData)", res)
+        local list = iam():call("get_ResultDatasList")
+        if list then list:call("Clear") end
+        native_exec_button(Native.ui, true)
+        Native.ui:set_field("NextFlowId", FLOW_CHECKEND)
+    end)
+    Native.active = false
+end)
 
 
 ---------------------------------------------------------------------------
